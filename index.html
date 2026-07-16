@@ -98,6 +98,12 @@
   .cell.highlight { background: var(--highlight); }
   .cell.same-num { background: var(--same); }
   .cell.selected { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-5px); }
+    40%, 80% { transform: translateX(5px); }
+  }
+  .cell.shake { animation: shake 0.35s ease; z-index: 1; }
 
   .notes {
     position: absolute;
@@ -220,6 +226,8 @@
   let seconds = 0;
   let timerId = null;
   let solved = false;
+  let gameOver = false;
+  const MAX_MISTAKES = 3;
 
   // ---------- Sudoku generation ----------
   function shuffle(a) {
@@ -306,7 +314,8 @@
     mistakes = 0;
     seconds = 0;
     solved = false;
-    mistakesEl.textContent = "0";
+    gameOver = false;
+    updateMistakes();
     overlay.classList.remove("show");
     startTimer();
     render();
@@ -388,36 +397,69 @@
   });
 
   function enterNumber(d) {
-    if (selected < 0 || given[selected] || solved) return;
+    if (selected < 0 || given[selected] || solved || gameOver) return;
     if (notesMode) {
       if (current[selected] !== 0) return;
       const set = notes[selected];
       set.has(d) ? set.delete(d) : set.add(d);
-    } else {
-      if (current[selected] === d) {
-        current[selected] = 0;
-      } else {
-        current[selected] = d;
-        notes[selected].clear();
-        if (d !== solution[selected]) {
-          mistakes++;
-          mistakesEl.textContent = mistakes;
-        }
-      }
+      render();
+      return;
     }
+    // Already filled with the correct answer — ignore further input
+    if (current[selected] !== 0) return;
+    if (d === solution[selected]) {
+      current[selected] = d;
+      notes[selected].clear();
+      render();
+      checkWin();
+    } else {
+      registerMistake(d);
+    }
+  }
+
+  function updateMistakes() {
+    mistakesEl.textContent = mistakes + "/" + MAX_MISTAKES;
+  }
+
+  // Wrong entry: the number is NOT placed. Flash it red + shake the cell,
+  // count a mistake, and end the game once the limit is reached.
+  function registerMistake(d) {
+    const idx = selected;
+    mistakes++;
+    updateMistakes();
     render();
-    checkWin();
+    const cellEl = boardEl.children[idx];
+    if (cellEl) {
+      cellEl.textContent = d;
+      cellEl.classList.remove("same-num", "highlight");
+      cellEl.classList.add("user", "error", "shake");
+    }
+    if (mistakes >= MAX_MISTAKES) {
+      setTimeout(loseGame, 450);
+    } else {
+      setTimeout(render, 450);
+    }
+  }
+
+  function loseGame() {
+    gameOver = true;
+    clearInterval(timerId);
+    render();
+    document.getElementById("modalTitle").textContent = "Game Over 💥";
+    document.getElementById("modalText").textContent =
+      "You hit " + MAX_MISTAKES + " mistakes. Time: " + timerEl.textContent;
+    overlay.classList.add("show");
   }
 
   function erase() {
-    if (selected < 0 || given[selected] || solved) return;
+    if (selected < 0 || given[selected] || solved || gameOver) return;
     current[selected] = 0;
     notes[selected].clear();
     render();
   }
 
   function hint() {
-    if (selected < 0 || given[selected] || solved) return;
+    if (selected < 0 || given[selected] || solved || gameOver) return;
     if (current[selected] === solution[selected]) return;
     current[selected] = solution[selected];
     notes[selected].clear();
@@ -441,8 +483,9 @@
     for (let i = 0; i < 81; i++) if (current[i] !== solution[i]) return;
     solved = true;
     clearInterval(timerId);
+    document.getElementById("modalTitle").textContent = "Solved! 🎉";
     document.getElementById("modalText").textContent =
-      "Time: " + timerEl.textContent + " · Mistakes: " + mistakes;
+      "Time: " + timerEl.textContent + " · Mistakes: " + mistakes + "/" + MAX_MISTAKES;
     overlay.classList.add("show");
   }
 
