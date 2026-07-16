@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sudoku</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --panel: #ffffff;
+    --ink: #1f2933;
+    --muted: #7b8794;
+    --line: #cbd2d9;
+    --line-strong: #3e4c59;
+    --accent: #2563eb;
+    --accent-soft: #dbeafe;
+    --given: #1f2933;
+    --user: #2563eb;
+    --error: #dc2626;
+    --error-soft: #fee2e2;
+    --highlight: #eef2ff;
+    --same: #e0e7ff;
+    --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px 48px;
+    min-height: 100vh;
+  }
+  .app { width: 100%; max-width: 520px; }
+  header { text-align: center; margin-bottom: 18px; }
+  h1 { margin: 0; font-size: 28px; letter-spacing: 0.5px; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .toolbar .group { display: flex; gap: 8px; align-items: center; }
+  select, button {
+    font: inherit;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    border-radius: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.05s;
+  }
+  button:hover, select:hover { border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover { background: #1d4ed8; }
+  .status { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); margin-bottom: 10px; }
+  .status b { color: var(--ink); }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    background: var(--line-strong);
+    border: 3px solid var(--line-strong);
+    border-radius: 12px;
+    overflow: hidden;
+    aspect-ratio: 1 / 1;
+    box-shadow: var(--shadow);
+    user-select: none;
+  }
+  .cell {
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    font-size: clamp(18px, 5.5vw, 30px);
+    cursor: pointer;
+    border: 1px solid var(--line);
+    transition: background 0.12s;
+  }
+  /* thicker 3x3 separators */
+  .cell:nth-child(3n) { border-right: 2px solid var(--line-strong); }
+  .cell:nth-child(9n) { border-right: none; }
+  .board .cell:nth-child(n+19):nth-child(-n+27),
+  .board .cell:nth-child(n+46):nth-child(-n+54) { border-bottom: 2px solid var(--line-strong); }
+
+  .cell.given { color: var(--given); font-weight: 700; }
+  .cell.user { color: var(--user); font-weight: 600; }
+  .cell.error { color: var(--error); background: var(--error-soft); }
+  .cell.highlight { background: var(--highlight); }
+  .cell.same-num { background: var(--same); }
+  .cell.selected { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+
+  .notes {
+    position: absolute;
+    inset: 4%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    font-size: clamp(7px, 1.9vw, 11px);
+    color: var(--muted);
+    font-weight: 500;
+    pointer-events: none;
+  }
+  .notes span { display: flex; align-items: center; justify-content: center; }
+
+  .pad {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .pad button {
+    padding: 14px 0;
+    font-size: 20px;
+    font-weight: 600;
+    border-radius: 10px;
+  }
+  .pad button .count { display: block; font-size: 10px; color: var(--muted); font-weight: 500; margin-top: 2px; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; justify-content: center; flex-wrap: wrap; }
+  .toggle.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  .overlay.show { display: flex; }
+  .modal {
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 28px 32px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    max-width: 320px;
+  }
+  .modal h2 { margin: 0 0 8px; }
+  .modal p { color: var(--muted); margin: 0 0 18px; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Sudoku</h1>
+      <div class="sub">Fill every row, column, and 3×3 box with 1–9.</div>
+    </header>
+
+    <div class="toolbar">
+      <div class="group">
+        <label for="difficulty" style="color:var(--muted);font-size:13px;">Difficulty</label>
+        <select id="difficulty">
+          <option value="easy">Easy</option>
+          <option value="medium" selected>Medium</option>
+          <option value="hard">Hard</option>
+          <option value="expert">Expert</option>
+        </select>
+      </div>
+      <div class="group">
+        <button id="new" class="primary">New Game</button>
+      </div>
+    </div>
+
+    <div class="status">
+      <div>Time: <b id="timer">0:00</b></div>
+      <div>Mistakes: <b id="mistakes">0</b></div>
+    </div>
+
+    <div class="board" id="board"></div>
+
+    <div class="pad" id="pad"></div>
+
+    <div class="actions">
+      <button id="notesToggle" class="toggle">✏️ Notes</button>
+      <button id="erase">⌫ Erase</button>
+      <button id="hint">💡 Hint</button>
+      <button id="check">✓ Check</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <h2 id="modalTitle">Solved! 🎉</h2>
+      <p id="modalText"></p>
+      <button class="primary" id="modalNew">New Game</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  const boardEl = document.getElementById("board");
+  const padEl = document.getElementById("pad");
+  const timerEl = document.getElementById("timer");
+  const mistakesEl = document.getElementById("mistakes");
+  const difficultyEl = document.getElementById("difficulty");
+  const overlay = document.getElementById("overlay");
+
+  const CLUES = { easy: 42, medium: 34, hard: 30, expert: 26 };
+
+  let solution = [];   // full solved grid (81)
+  let puzzle = [];     // starting grid, 0 = empty
+  let current = [];    // player's grid
+  let notes = [];      // array of Sets, per cell
+  let given = [];      // boolean per cell
+  let selected = -1;
+  let mistakes = 0;
+  let seconds = 0;
+  let timerId = null;
+  let solved = false;
+
+  // ---------- Sudoku generation ----------
+  function shuffle(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function canPlace(grid, idx, val) {
+    const r = Math.floor(idx / 9), c = idx % 9;
+    for (let i = 0; i < 9; i++) {
+      if (grid[r * 9 + i] === val) return false;
+      if (grid[i * 9 + c] === val) return false;
+    }
+    const br = Math.floor(r / 3) * 3, bc = Math.floor(c / 3) * 3;
+    for (let i = 0; i < 3; i++)
+      for (let j = 0; j < 3; j++)
+        if (grid[(br + i) * 9 + (bc + j)] === val) return false;
+    return true;
+  }
+
+  function fillGrid(grid) {
+    const idx = grid.indexOf(0);
+    if (idx === -1) return true;
+    const nums = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    for (const val of nums) {
+      if (canPlace(grid, idx, val)) {
+        grid[idx] = val;
+        if (fillGrid(grid)) return true;
+        grid[idx] = 0;
+      }
+    }
+    return false;
+  }
+
+  // Count solutions up to a limit (used to keep puzzle unique)
+  function countSolutions(grid, limit) {
+    const idx = grid.indexOf(0);
+    if (idx === -1) return 1;
+    let count = 0;
+    for (let val = 1; val <= 9; val++) {
+      if (canPlace(grid, idx, val)) {
+        grid[idx] = val;
+        count += countSolutions(grid, limit);
+        grid[idx] = 0;
+        if (count >= limit) break;
+      }
+    }
+    return count;
+  }
+
+  function generate(clues) {
+    solution = new Array(81).fill(0);
+    fillGrid(solution);
+
+    puzzle = solution.slice();
+    const order = shuffle([...Array(81).keys()]);
+    let filled = 81;
+
+    for (const cell of order) {
+      if (filled <= clues) break;
+      const backup = puzzle[cell];
+      if (backup === 0) continue;
+      puzzle[cell] = 0;
+      const copy = puzzle.slice();
+      if (countSolutions(copy, 2) !== 1) {
+        puzzle[cell] = backup; // keep it, removal broke uniqueness
+      } else {
+        filled--;
+      }
+    }
+  }
+
+  // ---------- Game setup ----------
+  function newGame() {
+    const clues = CLUES[difficultyEl.value] || 34;
+    generate(clues);
+    current = puzzle.slice();
+    given = puzzle.map(v => v !== 0);
+    notes = Array.from({ length: 81 }, () => new Set());
+    selected = -1;
+    mistakes = 0;
+    seconds = 0;
+    solved = false;
+    mistakesEl.textContent = "0";
+    overlay.classList.remove("show");
+    startTimer();
+    render();
+  }
+
+  function startTimer() {
+    clearInterval(timerId);
+    updateTimer();
+    timerId = setInterval(() => { seconds++; updateTimer(); }, 1000);
+  }
+  function updateTimer() {
+    const m = Math.floor(seconds / 60), s = seconds % 60;
+    timerEl.textContent = m + ":" + String(s).padStart(2, "0");
+  }
+
+  // ---------- Rendering ----------
+  function render() {
+    boardEl.innerHTML = "";
+    const selVal = selected >= 0 ? current[selected] : 0;
+    const selRow = selected >= 0 ? Math.floor(selected / 9) : -1;
+    const selCol = selected >= 0 ? selected % 9 : -1;
+    const selBox = selected >= 0
+      ? Math.floor(selRow / 3) * 3 + Math.floor(selCol / 3) : -1;
+
+    for (let i = 0; i < 81; i++) {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      const r = Math.floor(i / 9), c = i % 9;
+      const box = Math.floor(r / 3) * 3 + Math.floor(c / 3);
+
+      if (selected >= 0 && i !== selected &&
+          (r === selRow || c === selCol || box === selBox)) {
+        cell.classList.add("highlight");
+      }
+      if (current[i] !== 0) {
+        cell.textContent = current[i];
+        cell.classList.add(given[i] ? "given" : "user");
+        if (!given[i] && current[i] !== solution[i]) cell.classList.add("error");
+        if (selVal !== 0 && current[i] === selVal && i !== selected) cell.classList.add("same-num");
+      } else if (notes[i].size) {
+        const n = document.createElement("div");
+        n.className = "notes";
+        for (let d = 1; d <= 9; d++) {
+          const s = document.createElement("span");
+          s.textContent = notes[i].has(d) ? d : "";
+          n.appendChild(s);
+        }
+        cell.appendChild(n);
+      }
+      if (i === selected) cell.classList.add("selected");
+
+      cell.addEventListener("click", () => { selected = i; render(); });
+      boardEl.appendChild(cell);
+    }
+    renderPad();
+  }
+
+  function renderPad() {
+    padEl.innerHTML = "";
+    // count remaining for each digit
+    const counts = new Array(10).fill(0);
+    for (let i = 0; i < 81; i++) if (current[i]) counts[current[i]]++;
+    for (let d = 1; d <= 9; d++) {
+      const b = document.createElement("button");
+      const remaining = 9 - counts[d];
+      b.innerHTML = d + '<span class="count">' + (remaining > 0 ? remaining : "✓") + "</span>";
+      if (remaining <= 0) b.disabled = true;
+      b.addEventListener("click", () => enterNumber(d));
+      padEl.appendChild(b);
+    }
+  }
+
+  // ---------- Input ----------
+  let notesMode = false;
+  const notesToggle = document.getElementById("notesToggle");
+  notesToggle.addEventListener("click", () => {
+    notesMode = !notesMode;
+    notesToggle.classList.toggle("on", notesMode);
+  });
+
+  function enterNumber(d) {
+    if (selected < 0 || given[selected] || solved) return;
+    if (notesMode) {
+      if (current[selected] !== 0) return;
+      const set = notes[selected];
+      set.has(d) ? set.delete(d) : set.add(d);
+    } else {
+      if (current[selected] === d) {
+        current[selected] = 0;
+      } else {
+        current[selected] = d;
+        notes[selected].clear();
+        if (d !== solution[selected]) {
+          mistakes++;
+          mistakesEl.textContent = mistakes;
+        }
+      }
+    }
+    render();
+    checkWin();
+  }
+
+  function erase() {
+    if (selected < 0 || given[selected] || solved) return;
+    current[selected] = 0;
+    notes[selected].clear();
+    render();
+  }
+
+  function hint() {
+    if (selected < 0 || given[selected] || solved) return;
+    if (current[selected] === solution[selected]) return;
+    current[selected] = solution[selected];
+    notes[selected].clear();
+    given[selected] = true; // lock the revealed answer
+    render();
+    checkWin();
+  }
+
+  function checkAll() {
+    let wrong = 0;
+    for (let i = 0; i < 81; i++)
+      if (current[i] !== 0 && current[i] !== solution[i]) wrong++;
+    render();
+    const filled = current.filter(v => v !== 0).length;
+    alert(wrong === 0
+      ? (filled === 81 ? "All correct!" : "So far so good — no mistakes.")
+      : wrong + " incorrect cell" + (wrong > 1 ? "s" : "") + " (shown in red).");
+  }
+
+  function checkWin() {
+    for (let i = 0; i < 81; i++) if (current[i] !== solution[i]) return;
+    solved = true;
+    clearInterval(timerId);
+    document.getElementById("modalText").textContent =
+      "Time: " + timerEl.textContent + " · Mistakes: " + mistakes;
+    overlay.classList.add("show");
+  }
+
+  document.getElementById("erase").addEventListener("click", erase);
+  document.getElementById("hint").addEventListener("click", hint);
+  document.getElementById("check").addEventListener("click", checkAll);
+  document.getElementById("new").addEventListener("click", newGame);
+  document.getElementById("modalNew").addEventListener("click", newGame);
+
+  // Keyboard support
+  document.addEventListener("keydown", (e) => {
+    if (e.key >= "1" && e.key <= "9") { enterNumber(parseInt(e.key, 10)); return; }
+    if (e.key === "Backspace" || e.key === "Delete" || e.key === "0") { erase(); return; }
+    if (selected < 0) { if (e.key.startsWith("Arrow")) { selected = 40; render(); } return; }
+    let r = Math.floor(selected / 9), c = selected % 9;
+    if (e.key === "ArrowUp") r = (r + 8) % 9;
+    else if (e.key === "ArrowDown") r = (r + 1) % 9;
+    else if (e.key === "ArrowLeft") c = (c + 8) % 9;
+    else if (e.key === "ArrowRight") c = (c + 1) % 9;
+    else if (e.key.toLowerCase() === "n") { notesToggle.click(); return; }
+    else return;
+    e.preventDefault();
+    selected = r * 9 + c;
+    render();
+  });
+
+  newGame();
+})();
+</script>
+</body>
+</html>
