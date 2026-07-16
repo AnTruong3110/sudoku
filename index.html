@@ -450,6 +450,8 @@
   document.getElementById("check").addEventListener("click", checkAll);
   document.getElementById("new").addEventListener("click", newGame);
   document.getElementById("modalNew").addEventListener("click", newGame);
+  // Selecting a difficulty immediately starts a fresh puzzle for that level
+  difficultyEl.addEventListener("change", newGame);
 
   // Keyboard support
   document.addEventListener("keydown", (e) => {
